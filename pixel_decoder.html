@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <title>Pixel Art Decoder</title>
+    <style>
+        :root { --bg-color: #f4f7f6; --card-bg: #ffffff; --primary: #4a90e2; --success: #2ecc71; }
+        body { font-family: 'Segoe UI', sans-serif; background-color: var(--bg-color); display: flex; flex-direction: column; align-items: center; padding: 40px; margin: 0; }
+        .container { background: var(--card-bg); padding: 30px; border-radius: 16px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); width: 90%; max-width: 800px; text-align: center; }
+        
+        .color-legend { display: grid; grid-template-columns: repeat(auto-fill, minmax(70px, 1fr)); gap: 8px; margin-bottom: 25px; padding: 15px; background: #f9f9f9; border-radius: 10px; border: 1px solid #eee; }
+        .color-item { display: flex; flex-direction: column; align-items: center; gap: 4px; font-size: 11px; font-weight: bold; }
+        .c-box { width: 25px; height: 25px; border-radius: 4px; border: 1px solid rgba(0,0,0,0.1); }
+
+        .input-group { margin-bottom: 20px; }
+        input { width: 100%; padding: 15px; border: 2px solid #ddd; border-radius: 8px; font-family: 'Courier New', monospace; font-size: 16px; box-sizing: border-box; }
+        
+        .btn-group { display: flex; gap: 10px; justify-content: center; margin-bottom: 20px; }
+        button { padding: 12px 20px; border: none; border-radius: 8px; cursor: pointer; font-weight: bold; transition: 0.2s; }
+        .btn-draw { background-color: var(--primary); color: white; }
+        .btn-download { background-color: var(--success); color: white; }
+        .btn-clear { background-color: #6c757d; color: white; }
+        button:hover { opacity: 0.8; transform: translateY(-1px); }
+
+        #result-area { margin-top: 20px; position: relative; display: inline-block; }
+        canvas { background-color: transparent; }
+        /* 그림이 그려졌을 때만 테두리가 생기도록 JS에서 조절합니다 */
+        .has-border { border: 4px solid #333; box-shadow: 0 5px 15px rgba(0,0,0,0.2); }
+        .info-text { font-size: 13px; color: #666; margin-top: 10px; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2>🖼️ 픽셀 아트 복원기</h2>
+    
+    <div class="color-legend" id="colorLegend"></div>
+
+    <div class="input-group">
+        <input type="text" id="rleCode" placeholder="여기에 코드를 입력하세요 (예: 3R2Y/5B/2G2X)" value="">
+        <p class="info-text">색상 기호와 숫자를 조합해 입력하세요. 줄바꿈은 <b>/</b> 입니다.</p>
+    </div>
+
+    <div class="btn-group">
+        <button class="btn-draw" onclick="restorePixelArt()">그림 복원하기</button>
+        <button class="btn-download" onclick="downloadImage()">이미지로 저장</button>
+        <button class="btn-clear" onclick="clearInput()">초기화</button>
+    </div>
+
+    <div id="result-area">
+        <canvas id="pixelCanvas"></canvas>
+    </div>
+</div>
+
+<script>
+    const colorMap = {
+        'R': '#FF0000', 'O': '#FFA500', 'Y': '#FFFF00', 'G': '#008000',
+        'L': '#ADFF2F', 'B': '#0000FF', 'A': '#00FFFF', 'P': '#800080',
+        'K': '#FFC0CB', 'N': '#8B4513', 'W': '#FFFFFF', 'S': '#C0C0C0',
+        'X': '#000000', 'D': '#2F4F4F'
+    };
+
+    const PIXEL_SIZE = 40;
+
+    const legendDiv = document.getElementById('colorLegend');
+    for (const [key, color] of Object.entries(colorMap)) {
+        const item = document.createElement('div');
+        item.className = 'color-item';
+        item.innerHTML = `<div class="c-box" style="background-color: ${color}"></div><span>${key}</span>`;
+        legendDiv.appendChild(item);
+    }
+
+    function restorePixelArt() {
+        const input = document.getElementById('rleCode').value.toUpperCase().replace(/\s/g, '');
+        const canvas = document.getElementById('pixelCanvas');
+        const ctx = canvas.getContext('2d');
+
+        if (!input) {
+            alert("코드를 먼저 입력해주세요!");
+            return;
+        }
+
+        const rows = input.split('/');
+        let maxWidth = 0;
+
+        const pixelData = rows.map(row => {
+            let pixels = [];
+            const matches = row.match(/(\d*)([A-Z])/g);
+            if (matches) {
+                matches.forEach(match => {
+                    const count = parseInt(match.match(/\d+/)) || 1;
+                    const colorKey = match.match(/[A-Z]/)[0];
+                    const color = colorMap[colorKey] || '#EEEEEE';
+                    for (let i = 0; i < count; i++) pixels.push(color);
+                });
+            }
+            if (pixels.length > maxWidth) maxWidth = pixels.length;
+            return pixels;
+        });
+
+        if (maxWidth === 0) return;
+
+        canvas.width = maxWidth * PIXEL_SIZE;
+        canvas.height = pixelData.length * PIXEL_SIZE;
+        canvas.classList.add('has-border'); // 그림이 그려지면 테두리 추가
+
+        pixelData.forEach((row, rowIndex) => {
+            row.forEach((color, colIndex) => {
+                ctx.fillStyle = color;
+                ctx.fillRect(colIndex * PIXEL_SIZE, rowIndex * PIXEL_SIZE, PIXEL_SIZE, PIXEL_SIZE);
+            });
+        });
+    }
+
+    function downloadImage() {
+        const canvas = document.getElementById('pixelCanvas');
+        if (canvas.width === 0) {
+            alert("복원된 그림이 없습니다!");
+            return;
+        }
+        const link = document.createElement('a');
+        link.download = 'my-pixel-art.png';
+        link.href = canvas.toDataURL('image/png');
+        link.click();
+    }
+
+    function clearInput() {
+        document.getElementById('rleCode').value = '';
+        const canvas = document.getElementById('pixelCanvas');
+        const ctx = canvas.getContext('2d');
+        canvas.width = 0;
+        canvas.height = 0;
+        canvas.classList.remove('has-border');
+    }
+
+    // 엔터키 처리
+    document.getElementById('rleCode').addEventListener('keypress', function (e) {
+        if (e.key === 'Enter') restorePixelArt();
+    });
+</script>
+
+</body>
+</html>
